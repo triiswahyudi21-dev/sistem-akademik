@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sistem Academic - SMPN 3 Besuki</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght=300;400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     
@@ -63,13 +63,16 @@
         <header class="h-20 bg-white border-b border-slate-200 flex items-center justify-between px-10 shrink-0">
             <h2 id="current-tab-title" class="text-xl font-bold text-slate-800">Data Siswa & Excel</h2>
             
-            <div class="flex items-center gap-4 bg-slate-50 p-2 rounded-xl border border-slate-200">
+            <div class="flex items-center gap-3 bg-slate-50 p-2 rounded-xl border border-slate-200">
                 <div class="text-left pl-2">
                     <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tahun Pelajaran</p>
                     <select id="topbarTapel" onchange="changeTapel()" class="text-sm font-bold text-indigo-600 bg-transparent outline-none cursor-pointer pr-4"></select>
                 </div>
                 <button onclick="openModalTapel()" class="bg-indigo-600 hover:bg-indigo-700 text-white w-8 h-8 rounded-lg flex items-center justify-center text-xs shadow-md transition-all" title="Tambah Tahun Pelajaran">
                     <i class="fa-solid fa-plus"></i>
+                </button>
+                <button onclick="deleteTapel()" class="bg-rose-500 hover:bg-rose-600 text-white w-8 h-8 rounded-lg flex items-center justify-center text-xs shadow-md transition-all" title="Hapus Tahun Pelajaran Aktif">
+                    <i class="fa-solid fa-trash"></i>
                 </button>
             </div>
         </header>
@@ -86,10 +89,18 @@
                             <i class="fa-solid fa-file-excel text-emerald-500 mr-2"></i>
                             <span id="fileNameDisplay" class="text-slate-500 text-sm">Klik untuk upload file Excel (.xlsx)</span>
                         </label>
+                        <button onclick="saveExcelData()" class="px-6 py-4 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-md">
+                            <i class="fa-solid fa-floppy-disk mr-2"></i>Simpan Data
+                        </button>
                         <button onclick="clearStudents()" class="px-6 py-4 bg-rose-50 text-rose-600 rounded-xl text-sm font-bold hover:bg-rose-100 transition-all">
                             <i class="fa-solid fa-rotate-right mr-2"></i>Reset Data
                         </button>
                     </div>
+                </div>
+
+                <div class="flex justify-between items-center px-2">
+                    <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Tabel Peninjauan Data</h4>
+                    <div id="importStatusBadge"></div>
                 </div>
 
                 <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
@@ -168,7 +179,6 @@
                                 <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase w-28">No. Absen</th>
                                 <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Nama Siswa</th>
                                 <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase text-center w-72">Opsi Kehadiran (H / S / I / A)</th>
-                                <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase text-center w-36">Total (Hari Ini)</th>
                             </tr>
                         </thead>
                         <tbody id="absensiTableBody" class="divide-y divide-slate-100"></tbody>
@@ -322,10 +332,13 @@
         
         let tapelList = JSON.parse(localStorage.getItem('edu_tapel_list')) || ["2025/2026 Ganjil", "2025/2026 Genap"];
         let selectedTapel = localStorage.getItem('edu_selected_tapel') || tapelList[0];
+        
+        let tempStudents = []; // Penampung staging preview Excel
 
         function init() {
             const today = new Date().toISOString().split('T')[0];
-            document.getElementById('absensiDate').value = today;
+            const attDateInput = document.getElementById('absensiDate');
+            if (attDateInput) attDateInput.value = today;
 
             renderTapelDropdown();
             populateSelectors();
@@ -373,6 +386,21 @@
             alert('Tahun Pelajaran baru ditambahkan!');
         }
 
+        function deleteTapel() {
+            if (tapelList.length <= 1) {
+                return alert('Gagal menghapus! Minimal harus tersisa 1 Tahun Pelajaran di dalam sistem.');
+            }
+            if (confirm(`Apakah Anda yakin ingin menghapus Tahun Pelajaran "${selectedTapel}"?`)) {
+                tapelList = tapelList.filter(t => t !== selectedTapel);
+                selectedTapel = tapelList[0];
+                localStorage.setItem('edu_tapel_list', JSON.stringify(tapelList));
+                localStorage.setItem('edu_selected_tapel', selectedTapel);
+                renderTapelDropdown();
+                alert('Tahun Pelajaran aktif berhasil dihapus!');
+                init();
+            }
+        }
+
         function showTab(id) {
             document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.sidebar-link').forEach(l => l.classList.remove('active'));
@@ -388,17 +416,21 @@
             const selectors = ['jadwalClassFilter', 'absensiClassFilter', 'nilaiClassFilter', 'rekapAbsenClassFilter', 'formWaliKelas'];
             selectors.forEach(selId => {
                 const sel = document.getElementById(selId);
-                sel.innerHTML = '';
-                CLASSES.forEach(cls => {
-                    sel.innerHTML += `<option value="${cls}">Kelas ${cls}</option>`;
-                });
+                if (sel) {
+                    sel.innerHTML = '';
+                    CLASSES.forEach(cls => {
+                        sel.innerHTML += `<option value="${cls}">Kelas ${cls}</option>`;
+                    });
+                }
             });
         }
 
+        /* PERBAIKAN UTAMA: ENGINE PARSING EXCEL YANG DISEMPURNAKAN */
         function handleExcel(e) {
             const file = e.target.files[0];
             if(!file) return;
             document.getElementById('fileNameDisplay').innerText = file.name;
+            
             const reader = new FileReader();
             reader.onload = function(evt) {
                 const data = new Uint8Array(evt.target.result);
@@ -406,30 +438,74 @@
                 const sheet = workbook.Sheets[workbook.SheetNames[0]];
                 const json = XLSX.utils.sheet_to_json(sheet);
                 
-                students = json.map(row => {
-                    let noAbsen = row['No Absen'] || row['no absen'] || row['Absen'] || row['absen'] || row['NO'] || row['No'] || '-';
-                    let namaSiswa = row['Nama'] || row['nama'] || row['NAMA'] || row['Nama Siswa'] || row['nama siswa'] || 'Belum Ada Nama';
-                    let kelasSiswa = row['Kelas'] || row['kelas'] || row['KELAS'] || 'VIIA';
+                let autoAbsenCounter = {}; 
+
+                tempStudents = json.map((row, index) => {
+                    // Normalisasi Nama Kolom & Pembersihan Data
+                    let kelasSiswa = (row['Kelas'] || row['kelas'] || row['KELAS'] || 'VIIA').toString().replace(/\s/g, '').toUpperCase();
+                    let namaSiswa = (row['Nama'] || row['nama'] || row['NAMA'] || row['Nama Siswa'] || row['nama siswa'] || 'Tanpa Nama').toString().trim();
+                    let noAbsen = row['No Absen'] || row['no absen'] || row['Absen'] || row['absen'] || row['NO'] || row['No'];
+
+                    // Fallback cerdas jika No Absen kosong / bukan angka
+                    if (!noAbsen || isNaN(noAbsen)) {
+                        if (!autoAbsenCounter[kelasSiswa]) {
+                            const existingInClass = students.filter(s => s.kelas === kelasSiswa);
+                            autoAbsenCounter[kelasSiswa] = existingInClass.length > 0 ? Math.max(...existingInClass.map(s => parseInt(s.absen) || 0)) : 0;
+                        }
+                        autoAbsenCounter[kelasSiswa]++;
+                        noAbsen = autoAbsenCounter[kelasSiswa];
+                    }
 
                     return {
-                        absen: noAbsen.toString().trim(),
-                        nama: namaSiswa.toString().trim(),
-                        kelas: kelasSiswa.toString().replace(/\s/g, '').toUpperCase()
+                        absen: parseInt(noAbsen).toString(),
+                        nama: namaSiswa,
+                        kelas: kelasSiswa
                     };
                 });
                 
-                localStorage.setItem('edu_students', JSON.stringify(students));
                 renderStudents();
-                renderRombelCards();
-                alert('Berhasil mengimpor ' + students.length + ' data siswa!');
+                alert('Preview berhasil dimuat! Tinjau tabel di bawah, lalu klik "Simpan Data" untuk digabungkan ke sistem.');
             };
             reader.readAsArrayBuffer(file);
+            e.target.value = ''; 
+        }
+
+        /* PERBAIKAN UTAMA: SYSTEM SAVE & INTEGRASI DATA EXCEL */
+        function saveExcelData() {
+            if (tempStudents.length === 0) {
+                return alert('Tidak ada data preview Excel yang bisa disimpan. Silakan unggah file Excel terlebih dahulu.');
+            }
+
+            tempStudents.forEach(newSiswa => {
+                const existingIndex = students.findIndex(s => s.absen === newSiswa.absen && s.kelas === newSiswa.kelas);
+                if (existingIndex !== -1) {
+                    students[existingIndex] = newSiswa; // Update nama jika Absen & Kelas sama
+                } else {
+                    students.push(newSiswa); // Tambah data baru jika belum ada
+                }
+            });
+
+            // Auto-Sorting: Urutkan database berdasarkan Kelas -> No Absen
+            students.sort((a, b) => {
+                if (a.kelas !== b.kelas) return a.kelas.localeCompare(b.kelas);
+                return parseInt(a.absen) - parseInt(b.absen);
+            });
+
+            localStorage.setItem('edu_students', JSON.stringify(students));
+            tempStudents = []; // Reset staging data preview
+            document.getElementById('fileNameDisplay').innerText = 'Klik untuk upload file Excel (.xlsx)';
+            
+            renderStudents();
+            renderRombelCards();
+            alert('Hebat! Data Excel berhasil diintegrasikan ke sistem tanpa menimpa data kelas lain.');
         }
 
         function clearStudents() {
-            if(confirm('Hapus seluruh data siswa?')) {
+            if(confirm('Apakah Anda yakin ingin menghapus SELURUH data siswa dari database?')) {
                 students = [];
+                tempStudents = [];
                 localStorage.removeItem('edu_students');
+                document.getElementById('fileNameDisplay').innerText = 'Klik untuk upload file Excel (.xlsx)';
                 renderStudents();
                 renderRombelCards();
             }
@@ -437,8 +513,20 @@
 
         function renderStudents() {
             const body = document.getElementById('siswaTableBody');
-            body.innerHTML = students.length === 0 ? '<tr><td colspan="3" class="p-10 text-center text-slate-400 italic">Belum ada data siswa. Silakan lakukan import Excel.</td></tr>' : '';
-            students.forEach(s => {
+            const badge = document.getElementById('importStatusBadge');
+            
+            // Pilih data mana yang mau di-render (Preview vs DB Riil)
+            const activeData = tempStudents.length > 0 ? tempStudents : students;
+
+            if (tempStudents.length > 0) {
+                badge.innerHTML = `<span class="bg-amber-100 text-amber-800 text-xs font-bold px-3 py-1.5 rounded-xl border border-amber-200 animate-pulse"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Mode Preview (Belum Disimpan)</span>`;
+            } else {
+                badge.innerHTML = `<span class="bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1.5 rounded-xl border border-emerald-200"><i class="fa-solid fa-circle-check mr-1"></i> Data Terintegrasi (Database)</span>`;
+            }
+
+            body.innerHTML = activeData.length === 0 ? '<tr><td colspan="3" class="p-10 text-center text-slate-400 italic">Belum ada data siswa di dalam sistem. Silakan lakukan import Excel.</td></tr>' : '';
+            
+            activeData.forEach(s => {
                 body.innerHTML += `
                     <tr class="hover:bg-slate-50/50">
                         <td class="px-6 py-4 font-mono text-indigo-600 font-bold">${s.absen}</td>
@@ -450,6 +538,7 @@
 
         function renderRombelCards() {
             const container = document.getElementById('rombelCards');
+            if(!container) return;
             container.innerHTML = '';
             CLASSES.forEach(cls => {
                 const count = students.filter(s => s.kelas === cls).length;
@@ -457,7 +546,6 @@
             });
         }
 
-        // CRUD WALI KELAS
         function openModalWali() {
             document.getElementById('modalWaliTitle').innerText = "Set / Tambah Wali Kelas";
             document.getElementById('formWaliNama').value = '';
@@ -469,21 +557,22 @@
 
         function submitWali() {
             const cls = document.getElementById('formWaliKelas').value;
-            const nama = document.getElementById('formWaliNama').value;
-            const nip = document.getElementById('formWaliNip').value;
+            const nama = document.getElementById('formWaliNama').value.trim();
+            const nip = document.getElementById('formWaliNip').value.trim();
             if(!nama || !nip) return alert('Nama dan NIP tidak boleh kosong!');
             waliKelas[cls] = { nama, nip };
             localStorage.setItem('edu_wali', JSON.stringify(waliKelas));
             renderWaliKelas();
             closeModalWali();
+            alert('Wali kelas berhasil disimpan!');
         }
 
         function editWali(cls) {
             document.getElementById('modalWaliTitle').innerText = "Edit Wali Kelas " + cls;
             document.getElementById('formWaliKelas').value = cls;
             document.getElementById('formWaliKelas').disabled = true;
-            document.getElementById('formWaliNama').value = waliKelas[cls].nama;
-            document.getElementById('formWaliNip').value = waliKelas[cls].nip;
+            document.getElementById('formWaliNama').value = waliKelas[cls] ? waliKelas[cls].nama : '';
+            document.getElementById('formWaliNip').value = waliKelas[cls] ? waliKelas[cls].nip : '';
             document.getElementById('modalWali').classList.remove('hidden');
         }
 
@@ -497,87 +586,101 @@
 
         function renderWaliKelas() {
             const body = document.getElementById('waliTableBody');
+            if(!body) return;
             body.innerHTML = '';
             CLASSES.forEach(cls => {
                 const hasWali = waliKelas[cls];
-                const nama = hasWali ? hasWali.nama : '<span class="text-rose-500 italic font-normal">Belum diisi</span>';
-                const nip = hasWali ? hasWali.nip : '-';
-                const aksi = hasWali ? 
-                    `<button onclick="editWali('${cls}')" class="text-amber-600 hover:text-amber-900 mx-2 font-bold text-xs"><i class="fa-solid fa-pen mr-1"></i>Edit</button>
-                     <button onclick="deleteWali('${cls}')" class="text-rose-600 hover:text-rose-900 mx-2 font-bold text-xs"><i class="fa-solid fa-trash mr-1"></i>Hapus</button>` : 
-                    `<button onclick="editWali('${cls}')" class="text-indigo-600 hover:text-indigo-900 font-bold text-xs"><i class="fa-solid fa-plus mr-1"></i>Set Wali</button>`;
-                body.innerHTML += `<tr><td class="px-6 py-4 font-bold text-slate-800">Kelas ${cls}</td><td class="px-6 py-4 text-sm text-slate-700 font-semibold">${nama}</td><td class="px-6 py-4 text-sm font-mono text-slate-400">${nip}</td><td class="px-6 py-4 text-center">${aksi}</td></tr>`;
+                if(hasWali) {
+                    body.innerHTML += `
+                        <tr class="hover:bg-slate-50/50">
+                            <td class="px-6 py-4 font-bold text-slate-800">Kelas ${cls}</td>
+                            <td class="px-6 py-4 text-slate-700 font-medium">${hasWali.nama}</td>
+                            <td class="px-6 py-4 font-mono text-slate-500">${hasWali.nip}</td>
+                            <td class="px-6 py-4 text-center space-x-2">
+                                <button onclick="editWali('${cls}')" class="text-indigo-600 hover:text-indigo-900 transition-all" title="Edit"><i class="fa-solid fa-pen-to-square"></i></button>
+                                <button onclick="deleteWali('${cls}')" class="text-rose-600 hover:text-rose-900 transition-all" title="Hapus"><i class="fa-solid fa-trash"></i></button>
+                            </td>
+                        </tr>`;
+                } else {
+                    body.innerHTML += `
+                        <tr class="hover:bg-slate-50/50 bg-slate-50/30">
+                            <td class="px-6 py-4 font-bold text-slate-400">Kelas ${cls}</td>
+                            <td colspan="2" class="px-6 py-4 text-slate-400 italic text-xs">Belum ditugaskan wali kelas</td>
+                            <td class="px-6 py-4 text-center">
+                                <button onclick="editWali('${cls}')" class="bg-indigo-50 text-indigo-600 px-3 py-1 rounded-md text-xs font-bold hover:bg-indigo-100 transition-all"><i class="fa-solid fa-plus mr-1"></i>Set Wali</button>
+                            </td>
+                        </tr>`;
+                }
             });
         }
 
-        // JADWAL LOGIC
         function openModalJadwal() { document.getElementById('modalJadwal').classList.remove('hidden'); }
         function closeModalJadwal() { document.getElementById('modalJadwal').classList.add('hidden'); }
+        
         function submitJadwal() {
             const cls = document.getElementById('jadwalClassFilter').value;
             const hari = document.getElementById('formHari').value;
-            const mapel = document.getElementById('formMapel').value;
+            const mapel = document.getElementById('formMapel').value.trim();
             const mulai = document.getElementById('formJamMulai').value;
             const selesai = document.getElementById('formJamSelesai').value;
-            if(!mapel || !mulai || !selesai) return alert('Lengkapi form!');
+            
+            if(!mapel || !mulai || !selesai) return alert('Semua field harus diisi!');
             if(!schedules[cls]) schedules[cls] = [];
-            schedules[cls].push({ hari, mapel, jam: mulai + ' - ' + selesai });
+            
+            schedules[cls].push({ hari, mapel, waktu: `${mulai} - ${selesai}` });
             localStorage.setItem('edu_schedules', JSON.stringify(schedules));
             renderJadwal();
             closeModalJadwal();
+            alert('Jadwal Pelajaran berhasil ditambahkan!');
         }
 
         function renderJadwal() {
             const cls = document.getElementById('jadwalClassFilter').value;
             const body = document.getElementById('jadwalTableBody');
-            body.innerHTML = schedules[cls] && schedules[cls].length ? '' : '<tr><td colspan="3" class="p-8 text-center text-slate-400 italic">Belum ada jadwal.</td></tr>';
-            (schedules[cls] || []).forEach(j => {
-                body.innerHTML += `<tr><td class="px-6 py-4 font-bold text-slate-700">${j.hari}</td><td class="px-6 py-4 font-mono text-indigo-600 font-semibold">${j.jam}</td><td class="px-6 py-4 font-bold text-slate-800">${j.mapel}</td></tr>`;
-            });
-        }
-
-        // ABSENSI LOGIC
-        function updateLiveTotalAbsen(absenNo) {
-            const checkedRadio = document.querySelector(`input[name="abs_${absenNo}"]:checked`);
-            if(checkedRadio) {
-                document.getElementById(`live_status_${absenNo}`).innerText = checkedRadio.value;
+            if(!body) return;
+            body.innerHTML = '';
+            const list = schedules[cls] || [];
+            if(list.length === 0) {
+                body.innerHTML = '<tr><td colspan="3" class="p-6 text-center text-slate-400 italic">Belum ada jadwal pelajaran untuk kelas ini.</td></tr>';
+                return;
             }
+            list.forEach(j => {
+                body.innerHTML += `<tr><td class="px-6 py-4 font-semibold text-slate-700">${j.hari}</td><td class="px-6 py-4 font-mono text-indigo-600 font-bold">${j.waktu}</td><td class="px-6 py-4 text-slate-600 font-medium">${j.mapel}</td></tr>`;
+            });
         }
 
         function renderAbsensi() {
             const cls = document.getElementById('absensiClassFilter').value;
             const date = document.getElementById('absensiDate').value;
             const body = document.getElementById('absensiTableBody');
+            if(!body) return;
+            body.innerHTML = '';
             
-            if(!date) {
-                body.innerHTML = '<tr><td colspan="4" class="p-10 text-center text-slate-400 italic">Pilih tanggal terlebih dahulu.</td></tr>';
+            const classStudents = students.filter(s => s.kelas === cls);
+            if(classStudents.length === 0) {
+                body.innerHTML = '<tr><td colspan="3" class="p-10 text-center text-slate-400 italic">Tidak ada data siswa di kelas ini. Silakan isi data di tab pertama.</td></tr>';
                 return;
             }
-
-            const classStudents = students.filter(s => s.kelas === cls);
-            body.innerHTML = classStudents.length === 0 ? '<tr><td colspan="4" class="p-10 text-center text-slate-400 italic">Tidak ada data siswa di kelas ini.</td></tr>' : '';
             
-            const apiKey = `${selectedTapel}_${cls}_${date}`;
-            const savedAttendance = attendanceDB[apiKey] || {};
-
-            classStudents.forEach((s) => {
-                const currentStatus = savedAttendance[s.absen] || 'H';
-
+            const key = `${selectedTapel}_${cls}_${date}`;
+            const currentAttendance = attendanceDB[key] || {};
+            
+            classStudents.forEach(s => {
+                const status = currentAttendance[s.absen] || 'H';
                 body.innerHTML += `
                     <tr class="hover:bg-slate-50/50">
                         <td class="px-6 py-4 font-mono font-bold text-indigo-600">${s.absen}</td>
-                        <td class="px-6 py-4 text-sm font-semibold text-slate-700">${s.nama}</td>
+                        <td class="px-6 py-4 text-slate-700 font-semibold">${s.nama}</td>
                         <td class="px-6 py-4 text-center">
-                            <div class="flex justify-center gap-4">
-                                ${['H','S','I','A'].map(status => `
-                                    <label class="cursor-pointer">
-                                        <input type="radio" name="abs_${s.absen}" value="${status}" ${status === currentStatus ? 'checked' : ''} onchange="updateLiveTotalAbsen('${s.absen}')" class="hidden peer">
-                                        <div class="w-10 h-10 rounded-xl border border-slate-200 flex items-center justify-center text-xs font-bold text-slate-400 peer-checked:bg-indigo-600 peer-checked:text-white peer-checked:border-indigo-600 transition-all">${status}</div>
+                            <div class="flex justify-center gap-6">
+                                ${['H','S','I','A'].map(opt => `
+                                    <label class="inline-flex items-center gap-1.5 cursor-pointer select-none">
+                                        <input type="radio" name="att_${s.absen}" value="${opt}" ${status === opt ? 'checked' : ''} class="w-4 h-4 text-indigo-600 focus:ring-indigo-500 border-slate-300">
+                                        <span class="text-sm font-bold text-slate-600">${opt}</span>
                                     </label>
                                 `).join('')}
                             </div>
                         </td>
-                        <td class="px-6 py-4 text-center font-bold text-indigo-600 bg-indigo-50/30" id="live_status_${s.absen}">${currentStatus}</td>
                     </tr>`;
             });
         }
@@ -585,45 +688,46 @@
         function saveAbsensi() {
             const cls = document.getElementById('absensiClassFilter').value;
             const date = document.getElementById('absensiDate').value;
-            if(!date) return alert('Pilih tanggal absensi!');
-
-            const apiKey = `${selectedTapel}_${cls}_${date}`;
-            if(!attendanceDB[apiKey]) attendanceDB[apiKey] = {};
-
             const classStudents = students.filter(s => s.kelas === cls);
+            if(classStudents.length === 0) return;
+            
+            const key = `${selectedTapel}_${cls}_${date}`;
+            if(!attendanceDB[key]) attendanceDB[key] = {};
+            
             classStudents.forEach(s => {
-                const checkedRadio = document.querySelector(`input[name="abs_${s.absen}"]:checked`);
-                if(checkedRadio) {
-                    attendanceDB[apiKey][s.absen] = checkedRadio.value;
-                }
+                const radio = document.querySelector(`input[name="att_${s.absen}"]:checked`);
+                if(radio) attendanceDB[key][s.absen] = radio.value;
             });
-
+            
             localStorage.setItem('edu_attendance_db', JSON.stringify(attendanceDB));
-            alert(`Data Absensi Kelas ${cls} tanggal ${date} berhasil disimpan permanen!`);
+            alert('Data Absensi hari ini berhasil disimpan secara permanen!');
         }
 
-        // NILAI LOGIC
         function renderNilai() {
             const cls = document.getElementById('nilaiClassFilter').value;
             const mapel = document.getElementById('nilaiMapelFilter').value;
             const body = document.getElementById('nilaiTableBody');
+            if(!body) return;
+            body.innerHTML = '';
             
             const classStudents = students.filter(s => s.kelas === cls);
-            body.innerHTML = classStudents.length === 0 ? '<tr><td colspan="5" class="p-10 text-center text-slate-400 italic">Tidak ada siswa di kelas ini.</td></tr>' : '';
+            if(classStudents.length === 0) {
+                body.innerHTML = '<tr><td colspan="5" class="p-10 text-center text-slate-400 italic">Tidak ada data siswa di kelas ini.</td></tr>';
+                return;
+            }
             
-            const gradeKey = `${selectedTapel}_${cls}_${mapel}`;
-            const savedGrades = gradesDB[gradeKey] || {};
-
+            const key = `${selectedTapel}_${cls}_${mapel}`;
+            const currentGrades = gradesDB[key] || {};
+            
             classStudents.forEach(s => {
-                const sGrades = savedGrades[s.absen] || { tugas: '', uts: '', uas: '' };
-
+                const g = currentGrades[s.absen] || { tugas: '', uts: '', uas: '' };
                 body.innerHTML += `
                     <tr class="hover:bg-slate-50/50">
                         <td class="px-6 py-4 font-mono font-bold text-indigo-600">${s.absen}</td>
-                        <td class="px-6 py-4 font-semibold text-slate-700">${s.nama}</td>
-                        <td class="px-6 py-4 text-center"><input type="number" id="tugas_${s.absen}" value="${sGrades.tugas}" placeholder="0" class="w-20 bg-slate-50 border border-slate-200 rounded-lg p-2 text-center font-bold text-indigo-600 outline-none focus:ring-2 focus:ring-indigo-500"></td>
-                        <td class="px-6 py-4 text-center"><input type="number" id="uts_${s.absen}" value="${sGrades.uts}" placeholder="0" class="w-20 bg-slate-50 border border-slate-200 rounded-lg p-2 text-center font-bold text-indigo-600 outline-none focus:ring-2 focus:ring-indigo-500"></td>
-                        <td class="px-6 py-4 text-center"><input type="number" id="uas_${s.absen}" value="${sGrades.uas}" placeholder="0" class="w-20 bg-slate-50 border border-slate-200 rounded-lg p-2 text-center font-bold text-indigo-600 outline-none focus:ring-2 focus:ring-indigo-500"></td>
+                        <td class="px-6 py-4 text-slate-700 font-semibold">${s.nama}</td>
+                        <td class="px-6 py-4"><input type="number" id="tugas_${s.absen}" value="${g.tugas}" min="0" max="100" class="w-20 mx-auto block bg-slate-50 border border-slate-200 rounded-lg p-1.5 text-center font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none"></td>
+                        <td class="px-6 py-4"><input type="number" id="uts_${s.absen}" value="${g.uts}" min="0" max="100" class="w-20 mx-auto block bg-slate-50 border border-slate-200 rounded-lg p-1.5 text-center font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none"></td>
+                        <td class="px-6 py-4"><input type="number" id="uas_${s.absen}" value="${g.uas}" min="0" max="100" class="w-20 mx-auto block bg-slate-50 border border-slate-200 rounded-lg p-1.5 text-center font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none"></td>
                     </tr>`;
             });
         }
@@ -631,63 +735,61 @@
         function saveNilai() {
             const cls = document.getElementById('nilaiClassFilter').value;
             const mapel = document.getElementById('nilaiMapelFilter').value;
-
-            const gradeKey = `${selectedTapel}_${cls}_${mapel}`;
-            if(!gradesDB[gradeKey]) gradesDB[gradeKey] = {};
-
             const classStudents = students.filter(s => s.kelas === cls);
+            if(classStudents.length === 0) return;
+            
+            const key = `${selectedTapel}_${cls}_${mapel}`;
+            if(!gradesDB[key]) gradesDB[key] = {};
+            
             classStudents.forEach(s => {
-                const tugasVal = document.getElementById(`tugas_${s.absen}`).value;
-                const utsVal = document.getElementById(`uts_${s.absen}`).value;
-                const uasVal = document.getElementById(`uas_${s.absen}`).value;
-
-                gradesDB[gradeKey][s.absen] = {
-                    tugas: tugasVal,
-                    uts: utsVal,
-                    uas: uasVal
-                };
+                const tugas = document.getElementById(`tugas_${s.absen}`).value;
+                const uts = document.getElementById(`uts_${s.absen}`).value;
+                const uas = document.getElementById(`uas_${s.absen}`).value;
+                gradesDB[key][s.absen] = { tugas, uts, uas };
             });
-
+            
             localStorage.setItem('edu_grades_db', JSON.stringify(gradesDB));
-            alert(`Nilai Kelas ${cls} Mapel ${mapel} Berhasil disimpan permanen!`);
-            renderNilai();
+            alert('Nilai Akademik berhasil disimpan!');
         }
 
-        // FUNGSI UNTUK MERENDER HALAMAN BARU REKAP ABSENSI KUMULATIF 
         function renderHalamanRekap() {
             const cls = document.getElementById('rekapAbsenClassFilter').value;
-            const rekapBody = document.getElementById('halamanRekapTableBody');
+            const body = document.getElementById('halamanRekapTableBody');
+            if(!body) return;
+            body.innerHTML = '';
             
             const classStudents = students.filter(s => s.kelas === cls);
-            rekapBody.innerHTML = classStudents.length === 0 ? '<tr><td colspan="6" class="p-10 text-center text-slate-400 italic">Tidak ada siswa di kelas ini.</td></tr>' : '';
-
+            if(classStudents.length === 0) {
+                body.innerHTML = '<tr><td colspan="6" class="p-10 text-center text-slate-400 italic">Tidak ada data rekapitulasi untuk kelas ini.</td></tr>';
+                return;
+            }
+            
             classStudents.forEach(s => {
-                let totalH = 0, totalS = 0, totalI = 0, totalA = 0;
-
-                // Loop membaca data kumulatif dari database lokal absensi
+                let h = 0, sakit = 0, iz = 0, a = 0;
+                
                 Object.keys(attendanceDB).forEach(key => {
-                    if (key.startsWith(`${selectedTapel}_${cls}_`)) {
-                        const statusSiswa = attendanceDB[key][s.absen];
-                        if (statusSiswa === 'H') totalH++;
-                        if (statusSiswa === 'S') totalS++;
-                        if (statusSiswa === 'I') totalI++;
-                        if (statusSiswa === 'A') totalA++;
+                    if(key.startsWith(`${selectedTapel}_${cls}_`)) {
+                        const status = attendanceDB[key][s.absen];
+                        if(status === 'H') h++;
+                        else if(status === 'S') sakit++;
+                        else if(status === 'I') iz++;
+                        else if(status === 'A') a++;
                     }
                 });
-
-                rekapBody.innerHTML += `
+                
+                body.innerHTML += `
                     <tr class="hover:bg-slate-50/50">
                         <td class="px-6 py-4 font-mono font-bold text-indigo-600">${s.absen}</td>
-                        <td class="px-6 py-4 font-semibold text-slate-700">${s.nama}</td>
-                        <td class="px-6 py-4 text-center font-bold text-emerald-600">${totalH}</td>
-                        <td class="px-6 py-4 text-center font-bold text-amber-500">${totalS}</td>
-                        <td class="px-6 py-4 text-center font-bold text-blue-500">${totalI}</td>
-                        <td class="px-6 py-4 text-center font-bold text-rose-500">${totalA}</td>
+                        <td class="px-6 py-4 text-slate-700 font-semibold">${s.nama}</td>
+                        <td class="px-6 py-4 text-center text-emerald-600 font-bold">${h}</td>
+                        <td class="px-6 py-4 text-center text-amber-500 font-bold">${sakit}</td>
+                        <td class="px-6 py-4 text-center text-blue-500 font-bold">${iz}</td>
+                        <td class="px-6 py-4 text-center text-rose-500 font-bold">${a}</td>
                     </tr>`;
             });
         }
 
-        init();
+        window.onload = init;
     </script>
 </body>
 </html>
